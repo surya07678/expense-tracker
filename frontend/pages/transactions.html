@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Transactions – SpendWise</title>
+
+<link rel="stylesheet" href="/css/style.css">
+
+</head>
+
+
+<body>
+
+
+<div class="app-layout">
+
+<div id="sidebar-container"></div>
+
+<div class="main-content">
+
+<div id="topbar-container"></div>
+
+
+<div class="page-content">
+
+<!-- HEADER -->
+
+<div style="display:flex;justify-content:space-between;margin-bottom:20px">
+
+<div>
+
+<h2>Transactions</h2>
+
+<p style="font-size:13px;color:gray">Manage income and expenses</p>
+
+</div>
+
+<div style="display:flex;gap:10px">
+
+<button class="btn btn-outline btn-sm" onclick="TransactionsAPI.exportCSV()">📤 Export CSV</button>
+
+<button class="btn btn-success btn-sm" onclick="openModal('income')">+ Income</button>
+
+<button class="btn btn-primary btn-sm" onclick="openModal('expense')">+ Expense</button>
+
+</div>
+
+</div>
+
+
+
+<!-- FILTER BAR -->
+
+<div class="card" style="padding:16px;margin-bottom:20px">
+
+<div class="filter-bar">
+
+<input id="searchInput" class="form-control" placeholder="Search note">
+
+
+<select id="filterType" class="form-control">
+
+<option value="">All Types</option>
+
+<option value="income">Income</option>
+
+<option value="expense">Expense</option>
+
+</select>
+
+
+<select id="filterCategory" class="form-control">
+
+<option value="">All Categories</option>
+
+</select>
+
+
+<div>
+
+<label style="font-size:11px;color:gray">From</label>
+
+<input type="date" id="filterStart" class="form-control">
+
+</div>
+
+
+<div>
+
+<label style="font-size:11px;color:gray">To</label>
+
+<input type="date" id="filterEnd" class="form-control">
+
+</div>
+
+
+<button class="btn btn-outline btn-sm" onclick="resetFilters()">Clear</button>
+
+</div>
+
+</div>
+
+
+
+<!-- TABLE -->
+
+<div class="card">
+
+<table>
+
+<thead>
+
+<tr>
+
+<th>Type</th>
+
+<th>Category</th>
+
+<th>Note</th>
+
+<th>Date</th>
+
+<th style="text-align:right">Amount</th>
+
+<th style="text-align:center">Actions</th>
+
+</tr>
+
+</thead>
+
+
+<tbody id="txTableBody">
+
+<tr>
+
+<td colspan="6" style="text-align:center;padding:30px">Loading...</td>
+
+</tr>
+
+</tbody>
+
+</table>
+
+</div>
+
+
+</div>
+
+</div>
+
+</div>
+
+
+
+
+<!-- ADD / EDIT MODAL -->
+
+<div class="modal-overlay" id="txModal">
+
+<div class="modal">
+
+<div class="modal-header">
+
+<h3 id="modalTitle">Add Transaction</h3>
+
+<button class="modal-close" onclick="closeModal()">✕</button>
+
+</div>
+
+
+<form id="txForm">
+
+<input type="hidden" id="editId">
+
+
+<div class="form-row">
+
+<div class="form-group">
+
+<label>Amount *</label>
+
+<input type="number" id="txAmount" class="form-control" required>
+
+</div>
+
+
+<div class="form-group">
+
+<label>Date *</label>
+
+<input type="date" id="txDate" class="form-control" required>
+
+</div>
+
+</div>
+
+
+
+<div class="form-group">
+
+<label>Category *</label>
+
+<select id="txCategory" class="form-control"></select>
+
+</div>
+
+
+<div class="form-group">
+
+<label>Note</label>
+
+<input type="text" id="txNote" class="form-control">
+
+</div>
+
+
+<button type="submit" class="btn btn-primary btn-block" id="txSubmit">
+
+Add Transaction
+
+</button>
+
+</form>
+
+</div>
+
+</div>
+
+
+
+<!-- DELETE MODAL -->
+
+<div class="modal-overlay" id="deleteModal">
+
+<div class="modal" style="max-width:380px;text-align:center">
+
+<div style="font-size:45px">🗑️</div>
+
+<h3>Delete Transaction?</h3>
+
+<p style="font-size:13px;color:gray;margin-bottom:20px">
+
+This action cannot be undone
+
+</p>
+
+<div style="display:flex;gap:10px;justify-content:center">
+
+<button class="btn btn-outline" onclick="closeDeleteModal()">Cancel</button>
+
+<button class="btn btn-danger" id="confirmDeleteBtn">Delete</button>
+
+</div>
+
+</div>
+
+</div>
+
+
+
+
+<script src="/js/api.js"></script>
+<script src="/js/layout.js"></script>
+
+
+<script>
+
+
+if(!Auth.requireAuth()) throw new Error("Not authenticated")
+
+renderLayout("Transactions","All transactions")
+
+
+
+let cachedTransactions=[]
+let deleteTarget=null
+
+
+
+/* CATEGORY FILTER */
+
+function populateFilterCategories(){
+
+const all=[...new Set([...Categories.expense,...Categories.income])]
+
+const sel=document.getElementById("filterCategory")
+
+all.forEach(c=>{
+
+sel.innerHTML+=`<option value="${c}">${c}</option>`
+
+})
+
+}
+
+populateFilterCategories()
+
+
+
+/* LOAD */
+
+async function loadTransactions(){
+
+const res=await TransactionsAPI.getAll()
+
+if(!res?.ok){
+
+Toast.error("Failed loading")
+
+return
+
+}
+
+cachedTransactions=res.data.transactions
+
+applyFilters()
+
+}
+
+
+
+/* APPLY FILTERS */
+
+function applyFilters(){
+
+let data=[...cachedTransactions]
+
+const search=document.getElementById("searchInput").value.toLowerCase()
+
+const type=document.getElementById("filterType").value
+
+const category=document.getElementById("filterCategory").value
+
+const start=document.getElementById("filterStart").value
+
+const end=document.getElementById("filterEnd").value
+
+
+
+if(search){
+
+data=data.filter(t=> (t.note||"").toLowerCase().includes(search))
+
+}
+
+
+if(type){
+
+data=data.filter(t=> t.type===type)
+
+}
+
+
+if(category){
+
+data=data.filter(t=> t.category===category)
+
+}
+
+
+if(start){
+
+data=data.filter(t=> new Date(t.date)>=new Date(start))
+
+}
+
+
+if(end){
+
+data=data.filter(t=> new Date(t.date)<=new Date(end))
+
+}
+
+
+renderTable(data)
+
+}
+
+
+
+/* RENDER */
+
+function renderTable(transactions){
+
+const tbody=document.getElementById("txTableBody")
+
+if(!transactions.length){
+
+tbody.innerHTML=`<tr><td colspan="6" style="text-align:center">No results</td></tr>`
+
+return
+
+}
+
+tbody.innerHTML=transactions.map(t=>{
+
+const date=new Date(t.date).toLocaleDateString("en-IN")
+
+return`
+
+<tr>
+
+<td>${t.type==="income"?"📈 Income":"📉 Expense"}</td>
+
+<td>${Categories.icon(t.category)} ${t.category}</td>
+
+<td>${t.note||"—"}</td>
+
+<td>${date}</td>
+
+<td style="text-align:right;font-weight:600">
+
+<span class="${t.type === 'income' ? 'amount-income' : 'amount-expense'}">
+
+${t.type === "income" ? "+" : "−"} ₹${Number(t.amount).toLocaleString("en-IN")}
+
+</span>
+
+</td>
+
+<td style="text-align:center">
+
+<button onclick="editTransaction(${t.id})">✏️</button>
+
+<button onclick="deleteTransaction(${t.id})">🗑️</button>
+
+</td>
+
+</tr>
+
+`
+
+}).join("")
+
+}
+
+
+
+/* FILTER EVENTS */
+
+["searchInput","filterType","filterCategory","filterStart","filterEnd"]
+
+.forEach(id=>{
+
+document.getElementById(id).addEventListener("input",applyFilters)
+
+})
+
+
+
+function resetFilters(){
+
+["searchInput","filterType","filterCategory","filterStart","filterEnd"]
+
+.forEach(id=>document.getElementById(id).value="")
+
+applyFilters()
+
+}
+
+
+
+/* MODAL */
+
+function openModal(type="expense"){
+
+populateCategorySelect(type)
+
+document.getElementById("txModal").classList.add("active")
+
+document.getElementById("txDate").value=new Date().toISOString().split("T")[0]
+
+}
+
+
+
+function closeModal(){
+
+document.getElementById("txModal").classList.remove("active")
+
+document.getElementById("txForm").reset()
+
+}
+
+
+
+/* CATEGORY */
+
+function populateCategorySelect(type){
+
+const cats= type==="expense"?Categories.expense:Categories.income
+
+const sel=document.getElementById("txCategory")
+
+sel.innerHTML=cats.map(c=>`<option value="${c}">${c}</option>`).join("")
+
+}
+
+
+
+/* EDIT */
+
+function editTransaction(id){
+
+const t=cachedTransactions.find(x=>x.id===id)
+
+populateCategorySelect(t.type)
+
+document.getElementById("editId").value=t.id
+
+document.getElementById("txAmount").value=t.amount
+
+document.getElementById("txDate").value=t.date.split("T")[0]
+
+document.getElementById("txNote").value=t.note||""
+
+setTimeout(()=>{
+
+document.getElementById("txCategory").value=t.category
+
+},50)
+
+document.getElementById("modalTitle").textContent="Edit Transaction"
+
+document.getElementById("txSubmit").textContent="Save Changes"
+
+document.getElementById("txModal").classList.add("active")
+
+}
+
+
+
+/* FORM SUBMIT */
+
+document.getElementById("txForm").addEventListener("submit", async function(e){
+
+e.preventDefault()
+
+const id = document.getElementById("editId").value
+
+/* detect type from category */
+
+let type = "expense"
+
+if (Categories.income.includes(document.getElementById("txCategory").value)){
+type = "income"
+}
+
+const payload = {
+
+type: type,
+
+amount: document.getElementById("txAmount").value,
+
+date: document.getElementById("txDate").value,
+
+category: document.getElementById("txCategory").value,
+
+note: document.getElementById("txNote").value
+
+}
+
+
+let res
+
+if(id){
+
+res = await TransactionsAPI.update(id, payload)
+
+}else{
+
+res = await TransactionsAPI.create(payload)
+
+}
+
+if(res?.ok){
+
+Toast.success("Transaction saved")
+
+closeModal()
+
+loadTransactions()
+
+}else{
+
+Toast.error(res?.data?.message || "Failed to save transaction")
+
+}
+
+})
+
+
+/* DELETE */
+
+function deleteTransaction(id){
+
+deleteTarget=id
+
+document.getElementById("deleteModal").classList.add("active")
+
+}
+
+
+
+function closeDeleteModal(){
+
+deleteTarget=null
+
+document.getElementById("deleteModal").classList.remove("active")
+
+}
+
+
+
+document.getElementById("confirmDeleteBtn").addEventListener("click",async()=>{
+
+if(!deleteTarget) return
+
+const res=await TransactionsAPI.delete(deleteTarget)
+
+if(res?.ok){
+
+Toast.success("Deleted")
+
+closeDeleteModal()
+
+loadTransactions()
+
+}
+
+})
+
+
+
+loadTransactions()
+
+</script>
+
+
+</body>
+</html>

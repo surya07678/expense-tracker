@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard – SpendWise</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="app-layout">
+    <div id="sidebar-container"></div>
+
+    <div class="main-content">
+        <div id="topbar-container"></div>
+
+        <div class="page-content">
+
+            <!-- Stats Grid -->
+            <div class="stats-grid">
+                <div class="stat-card balance fade-in-up">
+                    <div class="stat-label">💰 Total Balance</div>
+                    <div class="stat-value" id="statBalance">$0.00</div>
+                    <div class="stat-change">Income − Expenses</div>
+                    <div class="stat-icon">💳</div>
+                </div>
+                <div class="stat-card income fade-in-up">
+                    <div class="stat-label">📈 Total Income</div>
+                    <div class="stat-value" id="statIncome">$0.00</div>
+                    <div class="stat-change">All time</div>
+                    <div class="stat-icon">💹</div>
+                </div>
+                <div class="stat-card expense fade-in-up">
+                    <div class="stat-label">📉 Total Expenses</div>
+                    <div class="stat-value" id="statExpense">$0.00</div>
+                    <div class="stat-change">All time</div>
+                    <div class="stat-icon">💸</div>
+                </div>
+                <div class="stat-card savings fade-in-up">
+                    <div class="stat-label">🎯 Savings Rate</div>
+                    <div class="stat-value" id="statSavings">0%</div>
+                    <div class="stat-change">Of income saved</div>
+                    <div class="stat-icon">🏦</div>
+                </div>
+            </div>
+
+            <!-- Charts Row -->
+            <div class="charts-grid">
+                <!-- Monthly Chart -->
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">Monthly Overview</div>
+                            <div class="card-subtitle">Income vs Expenses (last 6 months)</div>
+                        </div>
+                        <button class="btn btn-outline btn-sm" onclick="window.location.href='/analytics'">Full Analytics →</button>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="monthlyChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Category Pie Chart -->
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">Spending by Category</div>
+                            <div class="card-subtitle">Expense breakdown</div>
+                        </div>
+                    </div>
+                    <div class="chart-container" style="height:240px">
+                        <canvas id="categoryChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Transactions + Quick Add -->
+            <div class="content-grid">
+                <!-- Recent Transactions -->
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">Recent Transactions</div>
+                            <div class="card-subtitle">Your latest activity</div>
+                        </div>
+                        <a href="/transactions" class="btn btn-outline btn-sm">View All →</a>
+                    </div>
+                    <div id="recentTransactions">
+                        <div class="empty-state">
+                            <div class="empty-icon">📭</div>
+                            <h3>No transactions yet</h3>
+                            <p>Start by adding your first income or expense.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Actions + Category Summary -->
+                <div style="display:flex;flex-direction:column;gap:18px">
+                    <!-- Quick Add -->
+                    <div class="card">
+                        <div class="card-title" style="margin-bottom:16px">⚡ Quick Add</div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                            <button class="btn btn-success btn-block" onclick="openModal('income')">+ Income</button>
+                            <button class="btn btn-danger btn-block"  onclick="openModal('expense')">− Expense</button>
+                        </div>
+                        <div style="margin-top:14px">
+                            <div class="form-group" style="margin-bottom:10px">
+                                <input type="number" id="quickAmount" class="form-control" placeholder="Amount" step="0.01" min="0">
+                            </div>
+                            <div class="form-group" style="margin-bottom:10px">
+                                <select id="quickCategory" class="form-control">
+                                    <option value="">Select category</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="margin-bottom:12px">
+                                <input type="text" id="quickNote" class="form-control" placeholder="Note (optional)">
+                            </div>
+                            <button class="btn btn-primary btn-block" id="quickSubmit">Add Transaction</button>
+                        </div>
+                    </div>
+
+                    <!-- Top Categories -->
+                    <div class="card">
+                        <div class="card-title" style="margin-bottom:16px">🏷️ Top Categories</div>
+                        <div id="topCategories">
+                            <div style="text-align:center;color:var(--text-muted);font-size:13px;padding:20px 0">No data yet</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div><!-- /page-content -->
+    </div><!-- /main-content -->
+</div><!-- /app-layout -->
+
+<!-- Add Transaction Modal -->
+<div class="modal-overlay" id="txModal">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title" id="modalTitle">Add Transaction</div>
+            <button class="modal-close" onclick="closeModal()">✕</button>
+        </div>
+        <div class="type-toggle">
+            <button class="type-btn expense active" id="btnExpense" onclick="setType('expense')">📉 Expense</button>
+            <button class="type-btn income"          id="btnIncome"  onclick="setType('income')">📈 Income</button>
+        </div>
+        <form id="txForm">
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Amount *</label>
+                    <input type="number" id="txAmount" class="form-control" placeholder="0.00" step="0.01" min="0.01" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Date *</label>
+                    <input type="date" id="txDate" class="form-control" required>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Category *</label>
+                <select id="txCategory" class="form-control" required></select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Note</label>
+                <input type="text" id="txNote" class="form-control" placeholder="Optional description">
+            </div>
+            <div id="txError" style="display:none;color:var(--danger);font-size:13px;margin-bottom:12px"></div>
+            <button type="submit" class="btn btn-primary btn-block btn-lg" id="txSubmit">Add Transaction</button>
+        </form>
+    </div>
+</div>
+
+<div class="sidebar-overlay"></div>
+<div class="toast-container"></div>
+
+<script src="/js/api.js"></script>
+<script src="/js/layout.js"></script>
+<script>
+    // Auth guard
+    if (!Auth.requireAuth()) throw new Error('Not authenticated');
+
+    // Render layout
+    renderLayout('Dashboard', 'Welcome back 👋');
+
+    // ── State ──────────────────────────────────────────────────
+    let currentType = 'expense';
+    let monthlyChart, categoryChart;
+    const today = new Date().toISOString().split('T')[0];
+
+    // ── Load Dashboard Data ─────────────────────────────────────
+    async function loadDashboard() {
+        const res = await TransactionsAPI.getSummary();
+        if (!res?.ok) return;
+
+        const { summary } = res.data;
+        const user = Auth.getUser();
+        const currency = user?.currency || 'INR';
+
+        // Update stat cards
+        document.getElementById('statBalance').textContent = Format.currency(summary.balance, currency);
+        document.getElementById('statIncome').textContent  = Format.currency(summary.totalIncome, currency);
+        document.getElementById('statExpense').textContent = Format.currency(summary.totalExpense, currency);
+
+        const savingsRate = summary.totalIncome > 0
+            ? Math.round(((summary.totalIncome - summary.totalExpense) / summary.totalIncome) * 100)
+            : 0;
+        document.getElementById('statSavings').textContent = savingsRate + '%';
+
+        renderRecentTransactions(summary.recent, currency);
+        renderMonthlyChart(summary.monthly);
+        renderCategoryChart(summary.categoryBreakdown, currency);
+        renderTopCategories(summary.categoryBreakdown, summary.totalExpense, currency);
+    }
+
+    // ── Recent Transactions ─────────────────────────────────────
+    function renderRecentTransactions(transactions, currency) {
+        const container = document.getElementById('recentTransactions');
+        if (!transactions || transactions.length === 0) return;
+
+        container.innerHTML = transactions.map(t => `
+            <div class="transaction-item">
+                <div class="transaction-icon ${Categories.cssClass(t.category)}">${Categories.icon(t.category)}</div>
+                <div class="transaction-info">
+                    <div class="transaction-category">${t.category}</div>
+                    <div class="transaction-note">${t.note || 'No description'}</div>
+                </div>
+                <div style="text-align:right">
+                    <div class="transaction-amount ${t.type}">
+                        ${t.type === 'income' ? '+' : '−'}${Format.currency(t.amount, currency)}
+                    </div>
+                    <div class="transaction-date">${Format.shortDate(t.date)}</div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // ── Monthly Chart ───────────────────────────────────────────
+    function renderMonthlyChart(monthly) {
+        // Process monthly data
+        const monthMap = {};
+        monthly.forEach(row => {
+            if (!monthMap[row.month]) monthMap[row.month] = { income: 0, expense: 0 };
+            monthMap[row.month][row.type] = parseFloat(row.total);
+        });
+
+        const labels  = Object.keys(monthMap).map(m => {
+            const [y, mo] = m.split('-');
+            return new Date(y, mo - 1).toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+        });
+        const incomes  = Object.values(monthMap).map(v => v.income);
+        const expenses = Object.values(monthMap).map(v => v.expense);
+
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        const gridColor = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)';
+        const textColor = isDark ? '#94A3B8' : '#9CA3AF';
+
+        if (monthlyChart) monthlyChart.destroy();
+        monthlyChart = new Chart(document.getElementById('monthlyChart').getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [
+                    {
+                        label: 'Income',
+                        data: incomes,
+                        backgroundColor: 'rgba(16,185,129,0.8)',
+                        borderRadius: 6,
+                        borderSkipped: false
+                    },
+                    {
+                        label: 'Expense',
+                        data: expenses,
+                        backgroundColor: 'rgba(239,68,68,0.8)',
+                        borderRadius: 6,
+                        borderSkipped: false
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { labels: { color: textColor, font: { family: 'DM Sans', size: 12 } } },
+                    tooltip: { callbacks: { label: ctx => ' ' + Format.currency(ctx.raw) } }
+                },
+                scales: {
+                    x: { grid: { color: gridColor }, ticks: { color: textColor } },
+                    y: { grid: { color: gridColor }, ticks: { color: textColor, callback: v => '$' + v } }
+                }
+            }
+        });
+    }
+
+    // ── Category Pie Chart ──────────────────────────────────────
+    function renderCategoryChart(cats, currency) {
+        if (!cats || cats.length === 0) return;
+
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        const textColor = isDark ? '#94A3B8' : '#9CA3AF';
+
+        if (categoryChart) categoryChart.destroy();
+        categoryChart = new Chart(document.getElementById('categoryChart').getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: cats.map(c => c.category),
+                datasets: [{
+                    data: cats.map(c => parseFloat(c.total)),
+                    backgroundColor: Categories.chartColors,
+                    borderWidth: 0,
+                    hoverOffset: 8
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '68%',
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { color: textColor, font: { family: 'DM Sans', size: 11 }, padding: 12, boxWidth: 12 }
+                    },
+                    tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${Format.currency(ctx.raw)}` } }
+                }
+            }
+        });
+    }
+
+    // ── Top Categories ──────────────────────────────────────────
+    function renderTopCategories(cats, total, currency) {
+        const container = document.getElementById('topCategories');
+        if (!cats || cats.length === 0) return;
+
+        container.innerHTML = cats.slice(0, 5).map((cat, i) => {
+            const pct = total > 0 ? Math.round((parseFloat(cat.total) / total) * 100) : 0;
+            const color = Categories.chartColors[i % Categories.chartColors.length];
+            return `
+                <div style="margin-bottom:14px">
+                    <div style="display:flex;justify-content:space-between;margin-bottom:5px">
+                        <span style="font-size:13px;font-weight:600">${Categories.icon(cat.category)} ${cat.category}</span>
+                        <span style="font-size:13px;color:var(--text-muted)">${Format.currency(cat.total, currency)} (${pct}%)</span>
+                    </div>
+                    <div class="progress-bar-container">
+                        <div class="progress-bar" style="width:${pct}%;background:${color}"></div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    // ── Quick Add Setup ─────────────────────────────────────────
+    function setupQuickAdd() {
+        const catSelect = document.getElementById('quickCategory');
+        let quickType = 'expense';
+
+        // Populate categories
+        Categories.expense.forEach(c => {
+            catSelect.innerHTML += `<option value="${c}">${Categories.icon(c)} ${c}</option>`;
+        });
+
+        document.getElementById('quickSubmit').addEventListener('click', async () => {
+            const amount   = parseFloat(document.getElementById('quickAmount').value);
+            const category = catSelect.value;
+            const note     = document.getElementById('quickNote').value;
+
+            if (!amount || amount <= 0) return Toast.warning('Please enter a valid amount');
+            if (!category)             return Toast.warning('Please select a category');
+
+            const btn = document.getElementById('quickSubmit');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span>';
+
+            const res = await TransactionsAPI.create({
+                type: quickType, category, amount, date: today, note
+            });
+
+            btn.disabled = false;
+            btn.textContent = 'Add Transaction';
+
+            if (res?.ok) {
+                Toast.success('Transaction added!');
+                document.getElementById('quickAmount').value   = '';
+                document.getElementById('quickNote').value     = '';
+                catSelect.value = '';
+                loadDashboard();
+            } else {
+                Toast.error(res?.data?.message || 'Failed to add transaction');
+            }
+        });
+    }
+
+    // ── Modal ───────────────────────────────────────────────────
+    function openModal(type = 'expense') {
+        setType(type);
+        document.getElementById('txDate').value = today;
+        document.getElementById('txModal').classList.add('active');
+    }
+
+    function closeModal() {
+        document.getElementById('txModal').classList.remove('active');
+        document.getElementById('txForm').reset();
+        document.getElementById('txError').style.display = 'none';
+    }
+
+    function setType(type) {
+        currentType = type;
+        document.getElementById('btnExpense').className = `type-btn expense${type === 'expense' ? ' active' : ''}`;
+        document.getElementById('btnIncome').className  = `type-btn income${type === 'income'  ? ' active' : ''}`;
+        populateCategorySelect(document.getElementById('txCategory'), type);
+    }
+
+    function populateCategorySelect(select, type) {
+        const cats = type === 'expense' ? Categories.expense : Categories.income;
+        select.innerHTML = '<option value="">Choose category</option>' +
+            cats.map(c => `<option value="${c}">${Categories.icon(c)} ${c}</option>`).join('');
+    }
+
+    document.getElementById('txForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const errEl = document.getElementById('txError');
+        errEl.style.display = 'none';
+
+        const payload = {
+            type:     currentType,
+            category: document.getElementById('txCategory').value,
+            amount:   document.getElementById('txAmount').value,
+            date:     document.getElementById('txDate').value,
+            note:     document.getElementById('txNote').value
+        };
+
+        const btn = document.getElementById('txSubmit');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> Adding...';
+
+        const res = await TransactionsAPI.create(payload);
+
+        btn.disabled = false;
+        btn.textContent = 'Add Transaction';
+
+        if (res?.ok) {
+            Toast.success('✅ Transaction added successfully!');
+            closeModal();
+            loadDashboard();
+        } else {
+            errEl.textContent = res?.data?.message || 'Failed to add transaction.';
+            errEl.style.display = 'block';
+        }
+    });
+
+    // Close modal on backdrop click
+    document.getElementById('txModal').addEventListener('click', (e) => {
+        if (e.target === e.currentTarget) closeModal();
+    });
+
+    // ── Initialize ──────────────────────────────────────────────
+    setupQuickAdd();
+    loadDashboard();
+</script>
+</body>
+</html>

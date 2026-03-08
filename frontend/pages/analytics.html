@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analytics – SpendWise</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="app-layout">
+    <div id="sidebar-container"></div>
+    <div class="main-content">
+        <div id="topbar-container"></div>
+
+        <div class="page-content">
+            <div style="margin-bottom:24px">
+                <h2 style="font-size:22px;font-weight:700">Analytics</h2>
+                <p style="color:var(--text-muted);font-size:13px;margin-top:2px">Visualize your financial patterns</p>
+            </div>
+
+            <!-- Stats Row -->
+            <div class="stats-grid" style="margin-bottom:24px">
+                <div class="stat-card balance fade-in-up">
+                    <div class="stat-label">💰 Net Balance</div>
+                    <div class="stat-value" id="analyticsBalance">$0</div>
+                    <div class="stat-change">All time</div>
+                    <div class="stat-icon">📊</div>
+                </div>
+                <div class="stat-card income fade-in-up">
+                    <div class="stat-label">📈 Total Income</div>
+                    <div class="stat-value" id="analyticsIncome">$0</div>
+                    <div class="stat-change" id="incomeCount">0 transactions</div>
+                    <div class="stat-icon">💹</div>
+                </div>
+                <div class="stat-card expense fade-in-up">
+                    <div class="stat-label">📉 Total Expenses</div>
+                    <div class="stat-value" id="analyticsExpense">$0</div>
+                    <div class="stat-change" id="expenseCount">0 transactions</div>
+                    <div class="stat-icon">💸</div>
+                </div>
+                <div class="stat-card savings fade-in-up">
+                    <div class="stat-label">📦 Avg. Monthly</div>
+                    <div class="stat-value" id="analyticsAvg">$0</div>
+                    <div class="stat-change">Expense per month</div>
+                    <div class="stat-icon">📅</div>
+                </div>
+            </div>
+
+            <!-- Charts Grid Row 1 -->
+            <div class="charts-grid" style="margin-bottom:18px">
+                <!-- Income vs Expense Line Chart -->
+                <div class="card fade-in-up">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">Income vs Expenses</div>
+                            <div class="card-subtitle">Monthly trend (last 6 months)</div>
+                        </div>
+                    </div>
+                    <div class="chart-container" style="height:300px">
+                        <canvas id="lineChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Pie Chart -->
+                <div class="card fade-in-up">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">Expense Breakdown</div>
+                            <div class="card-subtitle">By category</div>
+                        </div>
+                    </div>
+                    <div class="chart-container" style="height:300px">
+                        <canvas id="pieChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Row 2 -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px">
+                <!-- Horizontal Bar Chart -->
+                <div class="card fade-in-up">
+                    <div class="card-header">
+                        <div class="card-title">Top Spending Categories</div>
+                        <div class="card-subtitle">Ranked by amount</div>
+                    </div>
+                    <div class="chart-container" style="height:280px">
+                        <canvas id="barHChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Monthly Savings Rate -->
+                <div class="card fade-in-up">
+                    <div class="card-header">
+                        <div class="card-title">Monthly Net Balance</div>
+                        <div class="card-subtitle">Income minus expenses per month</div>
+                    </div>
+                    <div class="chart-container" style="height:280px">
+                        <canvas id="netChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Category Details Table -->
+            <div class="card fade-in-up">
+                <div class="card-header">
+                    <div class="card-title">Category Details</div>
+                    <div class="card-subtitle">Complete breakdown of expenses by category</div>
+                </div>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Category</th>
+                                <th>Total Spent</th>
+                                <th>% of Total</th>
+                                <th style="min-width:200px">Progress</th>
+                            </tr>
+                        </thead>
+                        <tbody id="categoryTable">
+                            <tr><td colspan="4" style="text-align:center;padding:30px;color:var(--text-muted)">
+                                <span class="spinner spinner-dark"></span> Loading...
+                            </td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="sidebar-overlay"></div>
+<div class="toast-container"></div>
+
+<script src="/js/api.js"></script>
+<script src="/js/layout.js"></script>
+<script>
+    if (!Auth.requireAuth()) throw new Error('Not authenticated');
+    renderLayout('Analytics', 'Financial insights');
+
+    let lineChart, pieChart, barHChart, netChart;
+
+    function getChartDefaults() {
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        return {
+            gridColor: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)',
+            textColor:  isDark ? '#94A3B8' : '#6B7280'
+        };
+    }
+
+    async function loadAnalytics() {
+        const [summaryRes, allRes] = await Promise.all([
+            TransactionsAPI.getSummary(),
+            TransactionsAPI.getAll({ limit: 1000 })
+        ]);
+
+        if (!summaryRes?.ok) return Toast.error('Failed to load analytics');
+
+        const { summary } = summaryRes.data;
+        const transactions = allRes?.data?.transactions || [];
+        const user = Auth.getUser();
+        const currency = user?.currency || 'INR';
+
+        // Update stat cards
+        document.getElementById('analyticsBalance').textContent = Format.currency(summary.balance, currency);
+        document.getElementById('analyticsIncome').textContent  = Format.currency(summary.totalIncome, currency);
+        document.getElementById('analyticsExpense').textContent = Format.currency(summary.totalExpense, currency);
+
+        const incTx  = transactions.filter(t => t.type === 'income');
+        const expTx  = transactions.filter(t => t.type === 'expense');
+        document.getElementById('incomeCount').textContent  = incTx.length  + ' transactions';
+        document.getElementById('expenseCount').textContent = expTx.length  + ' transactions';
+
+        // Avg monthly expense
+        const months = [...new Set(summary.monthly.map(m => m.month))];
+        const avgMonthly = months.length > 0
+            ? summary.monthly.filter(m => m.type === 'expense').reduce((s, m) => s + parseFloat(m.total), 0) / Math.max(months.length, 1)
+            : 0;
+        document.getElementById('analyticsAvg').textContent = Format.currency(avgMonthly, currency);
+
+        renderLineChart(summary.monthly);
+        renderPieChart(summary.categoryBreakdown, currency);
+        renderBarHChart(summary.categoryBreakdown, currency);
+        renderNetChart(summary.monthly);
+        renderCategoryTable(summary.categoryBreakdown, summary.totalExpense, currency);
+    }
+
+    // ── Line Chart (Income vs Expense trend) ─────────────────────
+    function renderLineChart(monthly) {
+        const monthMap = {};
+        monthly.forEach(row => {
+            if (!monthMap[row.month]) monthMap[row.month] = { income: 0, expense: 0 };
+            monthMap[row.month][row.type] = parseFloat(row.total);
+        });
+        const labels   = Object.keys(monthMap).map(m => {
+            const [y, mo] = m.split('-');
+            return new Date(y, mo-1).toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+        });
+        const { gridColor, textColor } = getChartDefaults();
+
+        if (lineChart) lineChart.destroy();
+        lineChart = new Chart(document.getElementById('lineChart').getContext('2d'), {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [
+                    {
+                        label: 'Income',
+                        data: Object.values(monthMap).map(v => v.income),
+                        borderColor: '#10B981',
+                        backgroundColor: 'rgba(16,185,129,0.1)',
+                        tension: 0.4,
+                        fill: true,
+                        pointBackgroundColor: '#10B981',
+                        pointRadius: 5
+                    },
+                    {
+                        label: 'Expenses',
+                        data: Object.values(monthMap).map(v => v.expense),
+                        borderColor: '#EF4444',
+                        backgroundColor: 'rgba(239,68,68,0.1)',
+                        tension: 0.4,
+                        fill: true,
+                        pointBackgroundColor: '#EF4444',
+                        pointRadius: 5
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { labels: { color: textColor, font: { family: 'DM Sans', size: 12 } } },
+                    tooltip: { callbacks: { label: ctx => ' ' + Format.currency(ctx.raw) } }
+                },
+                scales: {
+                    x: { grid: { color: gridColor }, ticks: { color: textColor } },
+                    y: { grid: { color: gridColor }, ticks: { color: textColor, callback: v => '$' + v } }
+                }
+            }
+        });
+    }
+
+    // ── Pie Chart ─────────────────────────────────────────────────
+    function renderPieChart(cats, currency) {
+        const { textColor } = getChartDefaults();
+        if (!cats || cats.length === 0) return;
+        if (pieChart) pieChart.destroy();
+        pieChart = new Chart(document.getElementById('pieChart').getContext('2d'), {
+            type: 'pie',
+            data: {
+                labels: cats.map(c => c.category),
+                datasets: [{
+                    data: cats.map(c => parseFloat(c.total)),
+                    backgroundColor: Categories.chartColors,
+                    borderWidth: 2,
+                    borderColor: document.documentElement.getAttribute('data-theme') === 'dark' ? '#1A1A2E' : '#fff'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'right', labels: { color: textColor, font: { family: 'DM Sans', size: 11 }, padding: 12, boxWidth: 14 } },
+                    tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${Format.currency(ctx.raw)}` } }
+                }
+            }
+        });
+    }
+
+    // ── Horizontal Bar Chart ──────────────────────────────────────
+    function renderBarHChart(cats, currency) {
+        const { gridColor, textColor } = getChartDefaults();
+        if (!cats || cats.length === 0) return;
+        const sorted = [...cats].sort((a, b) => parseFloat(b.total) - parseFloat(a.total)).slice(0, 8);
+        if (barHChart) barHChart.destroy();
+        barHChart = new Chart(document.getElementById('barHChart').getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: sorted.map(c => `${Categories.icon(c.category)} ${c.category}`),
+                datasets: [{
+                    label: 'Amount',
+                    data: sorted.map(c => parseFloat(c.total)),
+                    backgroundColor: Categories.chartColors.slice(0, sorted.length),
+                    borderRadius: 6,
+                    borderSkipped: false
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { callbacks: { label: ctx => ' ' + Format.currency(ctx.raw) } }
+                },
+                scales: {
+                    x: { grid: { color: gridColor }, ticks: { color: textColor, callback: v => '$' + v } },
+                    y: { grid: { color: gridColor }, ticks: { color: textColor } }
+                }
+            }
+        });
+    }
+
+    // ── Net Balance Chart ─────────────────────────────────────────
+    function renderNetChart(monthly) {
+        const monthMap = {};
+        monthly.forEach(row => {
+            if (!monthMap[row.month]) monthMap[row.month] = { income: 0, expense: 0 };
+            monthMap[row.month][row.type] = parseFloat(row.total);
+        });
+        const nets = Object.values(monthMap).map(v => v.income - v.expense);
+        const labels = Object.keys(monthMap).map(m => {
+            const [y, mo] = m.split('-');
+            return new Date(y, mo-1).toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+        });
+        const { gridColor, textColor } = getChartDefaults();
+
+        if (netChart) netChart.destroy();
+        netChart = new Chart(document.getElementById('netChart').getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Net',
+                    data: nets,
+                    backgroundColor: nets.map(n => n >= 0 ? 'rgba(16,185,129,0.8)' : 'rgba(239,68,68,0.8)'),
+                    borderRadius: 6,
+                    borderSkipped: false
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { callbacks: { label: ctx => ' Net: ' + Format.currency(ctx.raw) } }
+                },
+                scales: {
+                    x: { grid: { color: gridColor }, ticks: { color: textColor } },
+                    y: { grid: { color: gridColor }, ticks: { color: textColor, callback: v => '$' + v } }
+                }
+            }
+        });
+    }
+
+    // ── Category Table ────────────────────────────────────────────
+    function renderCategoryTable(cats, total, currency) {
+        const tbody = document.getElementById('categoryTable');
+        if (!cats || cats.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:30px;color:var(--text-muted)">No expense data</td></tr>';
+            return;
+        }
+        tbody.innerHTML = cats.map((cat, i) => {
+            const pct   = total > 0 ? ((parseFloat(cat.total) / total) * 100).toFixed(1) : 0;
+            const color = Categories.chartColors[i % Categories.chartColors.length];
+            return `
+                <tr>
+                    <td>
+                        <div style="display:flex;align-items:center;gap:8px">
+                            <span class="transaction-icon ${Categories.cssClass(cat.category)}" style="width:30px;height:30px;font-size:14px;border-radius:8px">${Categories.icon(cat.category)}</span>
+                            <span style="font-weight:600">${cat.category}</span>
+                        </div>
+                    </td>
+                    <td class="font-mono font-bold text-danger">−${Format.currency(cat.total, currency)}</td>
+                    <td><span class="badge" style="background:rgba(79,70,229,0.1);color:var(--primary)">${pct}%</span></td>
+                    <td style="min-width:200px">
+                        <div class="progress-bar-container">
+                            <div class="progress-bar" style="width:${pct}%;background:${color}"></div>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    loadAnalytics();
+</script>
+</body>
+</html>

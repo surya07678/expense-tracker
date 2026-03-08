@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign Up – SpendWise</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<div class="auth-page">
+    <div class="auth-card">
+        <div class="auth-logo">
+            <div class="auth-logo-icon">💰</div>
+            <div>
+                <div style="font-size:20px;font-weight:700">SpendWise</div>
+                <div style="font-size:12px;color:var(--text-muted)">Smart Money Tracker</div>
+            </div>
+        </div>
+
+        <div class="auth-title">Create your account</div>
+        <div class="auth-subtitle">Start tracking your expenses for free.</div>
+
+        <form id="signupForm" style="margin-top:28px">
+            <div class="form-group">
+                <label class="form-label">Full Name</label>
+                <input type="text" id="name" class="form-control" placeholder="John Doe" required autocomplete="name">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Email address</label>
+                <input type="email" id="email" class="form-control" placeholder="you@example.com" required autocomplete="email">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Password</label>
+                <div style="position:relative">
+                    <input type="password" id="password" class="form-control" placeholder="Min. 6 characters" required autocomplete="new-password" style="padding-right:44px">
+                    <button type="button" id="togglePwd" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;color:var(--text-muted)">👁️</button>
+                </div>
+                <!-- Password strength bar -->
+                <div style="margin-top:8px">
+                    <div class="progress-bar-container">
+                        <div class="progress-bar" id="strengthBar" style="width:0;background:var(--danger)"></div>
+                    </div>
+                    <div id="strengthLabel" style="font-size:11px;color:var(--text-muted);margin-top:4px"></div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Confirm Password</label>
+                <input type="password" id="confirmPassword" class="form-control" placeholder="Repeat password" required autocomplete="new-password">
+            </div>
+
+            <div id="errorMsg" style="display:none;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:#EF4444;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px"></div>
+
+            <!-- Terms checkbox -->
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+                <input type="checkbox" id="terms" required style="width:16px;height:16px;cursor:pointer">
+                <label for="terms" style="font-size:13px;color:var(--text-muted);cursor:pointer">
+                    I agree to the <a href="#" class="auth-link">Terms of Service</a> and <a href="#" class="auth-link">Privacy Policy</a>
+                </label>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-block btn-lg" id="submitBtn">
+                Create Account
+            </button>
+        </form>
+
+        <p style="text-align:center;margin-top:22px;font-size:14px;color:var(--text-muted)">
+            Already have an account? <a href="/login" class="auth-link">Sign in</a>
+        </p>
+    </div>
+</div>
+
+<button data-action="toggle-dark" style="position:fixed;top:16px;right:16px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:16px;cursor:pointer;z-index:10">
+    <span class="dark-toggle-icon">🌙</span>
+</button>
+
+<script src="/js/api.js"></script>
+<script>
+    Auth.redirectIfLoggedIn();
+
+    const form           = document.getElementById('signupForm');
+    const submitBtn      = document.getElementById('submitBtn');
+    const errorMsg       = document.getElementById('errorMsg');
+    const pwdInput       = document.getElementById('password');
+    const togglePwd      = document.getElementById('togglePwd');
+    const strengthBar    = document.getElementById('strengthBar');
+    const strengthLabel  = document.getElementById('strengthLabel');
+
+    // Toggle password visibility
+    togglePwd.addEventListener('click', () => {
+        const isText = pwdInput.type === 'text';
+        pwdInput.type = isText ? 'password' : 'text';
+        togglePwd.textContent = isText ? '👁️' : '🙈';
+    });
+
+    // Password strength indicator
+    pwdInput.addEventListener('input', () => {
+        const pwd = pwdInput.value;
+        let score = 0;
+        if (pwd.length >= 6)  score++;
+        if (pwd.length >= 10) score++;
+        if (/[A-Z]/.test(pwd))   score++;
+        if (/[0-9]/.test(pwd))   score++;
+        if (/[^A-Za-z0-9]/.test(pwd)) score++;
+
+        const levels = [
+            { w: '0%',    color: 'var(--danger)',  label: '' },
+            { w: '20%',   color: 'var(--danger)',  label: 'Very weak' },
+            { w: '40%',   color: 'var(--warning)', label: 'Weak' },
+            { w: '60%',   color: 'var(--warning)', label: 'Fair' },
+            { w: '80%',   color: 'var(--success)', label: 'Strong' },
+            { w: '100%',  color: '#059669',        label: 'Very strong' }
+        ];
+        const lvl = levels[Math.min(score, 5)];
+        strengthBar.style.width  = lvl.w;
+        strengthBar.style.background = lvl.color;
+        strengthLabel.textContent = lvl.label;
+        strengthLabel.style.color  = lvl.color;
+    });
+
+    function showError(msg) { errorMsg.textContent = msg; errorMsg.style.display = 'block'; }
+    function hideError()    { errorMsg.style.display = 'none'; }
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        hideError();
+
+        const name     = document.getElementById('name').value.trim();
+        const email    = document.getElementById('email').value.trim();
+        const password = pwdInput.value;
+        const confirm  = document.getElementById('confirmPassword').value;
+
+        if (password !== confirm) {
+            return showError('Passwords do not match.');
+        }
+        if (password.length < 6) {
+            return showError('Password must be at least 6 characters.');
+        }
+
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span class="spinner"></span> Creating account...';
+
+        const res = await AuthAPI.signup({ name, email, password });
+
+        if (res?.ok && res.data?.success) {
+            Auth.setToken(res.data.token);
+            Auth.setUser(res.data.user);
+            Toast.success('Account created! Welcome, ' + name + '!');
+            setTimeout(() => { window.location.href = '/dashboard'; }, 700);
+        } else {
+            showError(res?.data?.message || 'Signup failed. Please try again.');
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Create Account';
+        }
+    });
+</script>
+</body>
+</html>
